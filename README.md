@@ -1,17 +1,66 @@
 # DRF Smart Nested Parser
 
-A simple parser for Django REST Framework that converts `form-data` and `application/x-www-form-urlencoded` inputs into nested structures (dict / list). For JSON, it uses the default DRF JSON parser without additional conversion.
+A custom parser class for Django REST Framework (DRF) that converts bracket-notation form keys into properly nested Python structures.
+
+It transparently handles:
+
+* `multipart/form-data`
+* `application/x-www-form-urlencoded`
+* `application/json` (delegated to DRF's default `JSONParser`)
+
+This allows frontend clients to submit nested data using standard HTML form conventions while preserving DRF’s normal behavior.
+
+---
+
+## Why?
+
+Django REST Framework does **not natively support nested bracket notation** in form submissions such as:
+
+```
+user[name]
+items[0][title]
+```
+
+This parser bridges that gap, enabling clients (Browsers, Postman, Bruno, mobile apps) to send nested form data without switching to JSON payloads.
+
+---
+
+## Features
+
+* Parses nested keys like `user[name]`, `items[0][title]`
+* Builds proper nested `dict` and `list` structures
+* Preserves uploaded files in `request.FILES`
+* Delegates JSON requests to DRF’s native `JSONParser`
+* Automatically casts numeric string values to `int` when possible
+* Works seamlessly as a global or per-view parser
+
+---
+
+## Requirements
+
+* Python >= 3.8
+* Django >= 4.2
+* djangorestframework >= 3.14
+
+---
 
 ## Installation
 
-If you're using this package locally, ensure it is importable from your project. If published on PyPI, install it by the package name.
+Available on PyPI:
 
-## Usage
+```
+pip install drf_smart_nested_parser
+```
 
-### Add to DRF settings
+---
+
+## Quick Start
+
+### Global configuration
 
 ```python
 # settings.py
+
 REST_FRAMEWORK = {
     "DEFAULT_PARSER_CLASSES": [
         "drf_smart_nested_parser.SmartNestedParser",
@@ -19,7 +68,15 @@ REST_FRAMEWORK = {
 }
 ```
 
-### Or only for a single view
+This replaces DRF’s default parsers while internally delegating to:
+
+* `JSONParser`
+* `MultiPartParser`
+* `FormParser`
+
+---
+
+### Per-view usage
 
 ```python
 from rest_framework.views import APIView
@@ -29,11 +86,13 @@ class MyView(APIView):
     parser_classes = [SmartNestedParser]
 ```
 
-## Input and Output
+---
 
-### Example for `multipart/form-data` or `application/x-www-form-urlencoded`
+## Example
 
-Form keys with bracket notation (`[]`) are converted to nested structures:
+### Incoming request
+
+(`multipart/form-data` or `application/x-www-form-urlencoded`)
 
 ```
 user[name] = Amir
@@ -43,7 +102,7 @@ items[0][price] = 120
 items[1][title] = Pen
 ```
 
-Output:
+### Parsed result (`request.data`)
 
 ```json
 {
@@ -58,26 +117,79 @@ Output:
 }
 ```
 
-Note: If a value can be converted to a number, it will be cast to `int`.
+Uploaded files remain accessible via:
 
-## Parser Behavior
+```python
+request.FILES
+```
 
-- If `Content-Type` includes `application/json`, DRF's `JSONParser` is used.
-- If `Content-Type` includes `multipart/form-data`, data is parsed and keys are converted to nested structures.
-- Otherwise (e.g. `application/x-www-form-urlencoded`), `FormParser` is used and the same conversion applies.
+---
 
-## Limitations and Notes
+## Behavior
 
-- Keys should start with a string root (e.g. `items[0]` should be used as part of a root like `items[0][name]` or at least `items[0]` alongside a textual root). A valid example: `items[0][name]`.
-- File values in `multipart/form-data` are kept in `files` and are not modified.
+| Content-Type                        | Behavior                                                                     |
+| ----------------------------------- | ---------------------------------------------------------------------------- |
+| `application/json`                  | Uses DRF's `JSONParser` without modification                                 |
+| `multipart/form-data`               | Parsed using `MultiPartParser`, then keys are converted to nested structures |
+| `application/x-www-form-urlencoded` | Parsed using `FormParser`, then keys are converted to nested structures      |
 
-## Development
+Numeric string values are automatically cast to `int` when possible.
 
-Code layout:
+---
 
-- `parsers.py`: `SmartNestedParser` implementation
-- `utils.py`: `parse_nested_keys` helper
+## Key Rules
+
+Valid examples:
+
+```
+items[0][name]
+user[address][city]
+```
+
+Invalid example:
+
+```
+[0][name]
+```
+
+Keys must start with a string root.
+
+---
+
+## File Handling
+
+File objects are preserved and returned inside `DataAndFiles.files`.
+They are **not modified or transformed**.
+
+---
+
+## Use Cases
+
+* Complex nested form submissions
+* Frontend frameworks sending bracket-notation keys
+* Multipart requests combining nested data + file uploads
+* Replacing JSON with form submissions while keeping structure
+
+---
+
+## Project Structure
+
+```
+drf_smart_nested_parser/
+├── parsers.py
+├── utils.py
+└── __init__.py
+```
+
+---
 
 ## License
 
-MIT
+MIT License
+
+---
+
+## Contributing
+
+Pull requests are welcome.
+Please open an issue first to discuss major changes.
